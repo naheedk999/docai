@@ -821,7 +821,7 @@ else:
         st.markdown("<h1 class='app-title' style='text-align: center;'>Doctor AI Assistant</h1>", unsafe_allow_html=True)
     
     with nav_col3:
-        if st.button("⚙️", key="stButtonSettings_nav", help="Settings"):
+        if st.button("Doctor's credentials", key="stButtonSettings_nav", help="Settings"):
             st.session_state.current_page = "settings"
             st.rerun()
 
