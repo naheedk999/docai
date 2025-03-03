@@ -91,7 +91,7 @@ def generate_pre_briefing(patient_id, token):
         return {"error": "Patient not found in database"}
     else:
         return {"error": f"Unexpected error: {response.status_code} - {response.text}"}"""
-    return "Coming Soon"
+    return "{'response':'Coming Soon'}"
 
 # === Helper Function: Upload Audio to Transcription API ===
 def send_audio_to_transcription_api(file_bytes, filename, language, token):
@@ -764,7 +764,7 @@ else:
             border-radius: 8px !important;
             padding: 8px 16px !important;
             width: auto !important;
-            min-width: 400px !important;
+            min-width: 300px !important;
             margin: 0 auto !important;
             display: block !important;
         }
