@@ -382,8 +382,8 @@ def patient_visit_tab():
                     filename = uploaded_file.name
                     file_bytes = uploaded_file.getvalue()
 
-                #job_name = "transcribe-12345.mp3-1741015444"  #send_audio_to_transcription_api(file_bytes, filename, language, st.session_state.jwt_token)
                 job_name = send_audio_to_transcription_api(file_bytes, filename, language, st.session_state.jwt_token)
+
                 if job_name:
                     st.success(f"✅ Transcription started!")
                     transcript = poll_transcription_status(job_name, st.session_state.jwt_token)
