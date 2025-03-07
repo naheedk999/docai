@@ -838,31 +838,7 @@ else:
         with col3:
             date_of_birth = st.date_input("Date of Birth")
 
-        # Tabs Layout
-        tab1, tab2 = st.tabs(["Pre-Briefing", "Patient Visit"])
-
-        # Pre-Briefing Tab
-        with tab1:
-
-            if st.button("Generate Pre-Briefing", type="primary"):
-                if not patient_id:
-                    st.error("Please enter Patient ID before generating pre-briefing.")
-                else:
-                    with st.spinner("Generating Pre-Briefing..."):
-                        result = generate_pre_briefing(patient_id, st.session_state.jwt_token)
-                        if "error" in result:
-                            st.error(result["error"])
-                        else:
-                            st.session_state.pre_briefing_data = result
-                            st.success("Pre-Briefing Generated")
-
-            view_disabled = st.session_state.pre_briefing_data is None
-            if st.button("View Pre-Briefing", disabled=view_disabled, type="secondary"):
-                if st.session_state.pre_briefing_data:
-                    st.json(st.session_state.pre_briefing_data)
-
-        with tab2:
-            patient_visit_tab()
+        patient_visit_tab()
 
     elif st.session_state.current_page == "settings":
         # Navigation for settings page
