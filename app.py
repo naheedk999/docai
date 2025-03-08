@@ -9,6 +9,12 @@ import os
 import re
 import ast
 import json
+import shutil
+import platform
+import subprocess
+import urllib.request
+import tarfile
+import zipfile
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -16,10 +22,6 @@ from reportlab.lib import colors
 from io import BytesIO
 from pydub import AudioSegment
 import tempfile
-import platform
-import subprocess
-import urllib.request
-import tarfile
 
 # Set the path for ffmpeg
 FFMPEG_DIR = 'ffmpeg'
@@ -43,7 +45,7 @@ def ensure_ffmpeg():
                 ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
                 archive_path = os.path.join(FFMPEG_DIR, 'ffmpeg.tar.xz')
                 
-                # Download the archive using urllib
+                # Download the archive
                 st.write("Downloading ffmpeg...")
                 urllib.request.urlretrieve(ffmpeg_url, archive_path)
                 
@@ -72,7 +74,6 @@ def ensure_ffmpeg():
                 # Clean up
                 os.remove(archive_path)
                 if extracted_dir:
-                    import shutil
                     shutil.rmtree(os.path.join(FFMPEG_DIR, extracted_dir))
                 
             # For Windows
@@ -80,9 +81,7 @@ def ensure_ffmpeg():
                 ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
                 zip_path = os.path.join(FFMPEG_DIR, 'ffmpeg.zip')
                 
-                import urllib.request
-                import zipfile
-                
+                # Download ffmpeg
                 urllib.request.urlretrieve(ffmpeg_url, zip_path)
                 
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
