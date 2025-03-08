@@ -12,6 +12,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from io import BytesIO
+from pydub import AudioSegment
+import tempfile
 
 # === Config (replace with your actual values) ===
 REGION = st.secrets["REGION"]
@@ -93,35 +95,79 @@ def generate_pre_briefing(patient_id, token):
         return {"error": f"Unexpected error: {response.status_code} - {response.text}"}"""
     return "{'response':'Coming Soon'}"
 
+# === Helper Function: Compress Audio ===
+def compress_audio(file_bytes, input_format='wav'):
+    """Compress audio file to reduce size while maintaining quality."""
+    temp_in = None
+    try:
+        # Create a temporary file for the input
+        temp_in = tempfile.NamedTemporaryFile(suffix=f'.{input_format}', delete=False)
+        temp_in.write(file_bytes)
+        temp_in.close()  # Close the file before processing
+            
+        # Load audio file
+        audio = AudioSegment.from_file(temp_in.name, format=input_format)
+            
+        # Convert to mono if stereo
+        if audio.channels > 1:
+            audio = audio.set_channels(1)
+            
+        # Export as MP3 with reduced quality
+        output_buffer = BytesIO()
+        audio.export(output_buffer, format='mp3', parameters=["-q:a", "8"])
+            
+        return output_buffer.getvalue()
+    except Exception as e:
+        st.error(f"Error compressing audio: {str(e)}")
+        return None
+    finally:
+        # Clean up temp file in finally block
+        if temp_in is not None:
+            try:
+                if os.path.exists(temp_in.name):
+                    os.unlink(temp_in.name)
+            except Exception as e:
+                st.warning(f"Could not delete temporary file: {str(e)}")
+
 # === Helper Function: Upload Audio to Transcription API ===
 def send_audio_to_transcription_api(file_bytes, filename, language, token):
     """Convert audio to base64, send to transcription API."""
-    url = f"{API_URL}/start-transcription"
+    try:
+        # Compress audio before sending
+        compressed_bytes = compress_audio(file_bytes, input_format=filename.split('.')[-1].lower())
+        if compressed_bytes is None:
+            return None
+            
+        file_base64 = base64.b64encode(compressed_bytes).decode("utf-8")
+        
+        url = f"{API_URL}/start-transcription"
+        
+        payload = {
+            "filename": filename.replace(filename.split('.')[-1], 'mp3'),  # Change extension to mp3
+            "file": file_base64,
+            "language": language
+        }
 
-    file_base64 = base64.b64encode(file_bytes).decode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
 
-    payload = {
-        "filename": filename,
-        "file": file_base64,
-        "language": language
-    }
+        response = requests.post(url, json=payload, headers=headers)
+        
+        if response.status_code != 200:
+            st.error(f"❌ Failed to start transcription: {response.status_code} - {response.text}")
+            return None
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code != 200:
-        st.error(f"❌ Failed to start transcription: {response.status_code} - {response.text}")
+        return response.json().get("job_name")
+    except Exception as e:
+        st.error(f"Error processing audio: {str(e)}")
         return None
 
-    return response.json().get("job_name")
-
 # === Helper Function: Poll for Transcription Result ===
-def poll_transcription_status(job_name, token, max_retries=20, delay=5):
-    """Polls transcription status and returns the text once completed."""
+def poll_transcription_status(job_name, token, max_retries=120, delay=5):
+    """Polls transcription status and returns the text once completed.
+    max_retries=120 and delay=5 gives us 10 minutes total timeout (120 * 5 seconds = 600 seconds = 10 minutes)"""
     url = f"{API_URL}/get-transcription?job_name={job_name}"
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -135,7 +181,8 @@ def poll_transcription_status(job_name, token, max_retries=20, delay=5):
             st.error(f"❌ Job not found.")
             return None
         elif response.status_code == 202:
-            st.write(f"⏳ Transcription still in progress...")
+            remaining_time = (max_retries - attempt) * delay
+            st.write(f"⏳ Transcription in progress... (Timeout in {remaining_time} seconds)")
             time.sleep(delay)
             continue
         elif response.status_code != 200:
@@ -152,10 +199,10 @@ def poll_transcription_status(job_name, token, max_retries=20, delay=5):
             st.error(f"❌ Transcription job failed: {data.get('error', 'Unknown error')}")
             return None
 
-        st.write(f"⏳ Waiting for transcription to complete... Retrying in {delay} seconds")
+        st.write(f"⏳ Waiting for transcription... (Timeout in {(max_retries - attempt) * delay} seconds)")
         time.sleep(delay)
 
-    st.error("❌ Transcription timed out.")
+    st.error("❌ Transcription timed out after 5 minutes.")
     return None
 
 def clean_llm_response(llm_response):
@@ -346,12 +393,28 @@ def patient_visit_tab():
     with col1:
         st.markdown("#### 🎤 Record Audio")
         record_disabled = st.session_state.audio_source == "upload"
+        st.info("ℹ️ Please limit your recording to 30 minutes or less.")
         recorded_audio = st.audio_input("Record your visit notes", disabled=record_disabled)
+        
+        if recorded_audio:
+            # Check recording size (100MB = 100 * 1024 * 1024 bytes)
+            MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB in bytes
+            if len(recorded_audio.getvalue()) > MAX_FILE_SIZE:
+                st.error("❌ Recording size exceeds 100MB limit. Please make a shorter recording.")
+                recorded_audio = None
 
     with col2:
         st.markdown("#### 📁 Upload Audio")
         upload_disabled = st.session_state.audio_source == "record"
+        st.info("ℹ️ Maximum file size: 100MB (approximately 30 minutes of audio)")
         uploaded_file = st.file_uploader("Upload audio file (MP3/WAV/M4A)", type=["mp3", "wav", "m4a"], disabled=upload_disabled)
+        
+        if uploaded_file:
+            # Check file size (100MB = 100 * 1024 * 1024 bytes)
+            MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB in bytes
+            if len(uploaded_file.getvalue()) > MAX_FILE_SIZE:
+                st.error("❌ File size exceeds 100MB limit. Please upload a smaller file or reduce the audio duration.")
+                uploaded_file = None
 
     if recorded_audio and st.session_state.audio_source != "record":
         st.session_state.audio_source = "record"
@@ -409,7 +472,7 @@ def patient_visit_tab():
                 #patient_report = {"reason_for_visit": "Patient fell in the shower yesterday and is experiencing pain in the hand.","chief_complaint_history": "The patient reports falling in the shower yesterday, initially feeling fine but now experiencing increasing pain in the hand. The pain worsens with movement and is rated as a 6 out of 10 on the pain scale.","clinical_findings": "The doctor suspects a sprain or possibly a hairline fracture based on the patient's description. An X-ray has been recommended to confirm the diagnosis.","diagnosis_treatment_plan": "The initial assessment suggests a possible sprain or hairline fracture. An X-ray has been ordered to determine the exact nature of the injury. The treatment plan includes pain management and a follow-up appointment to review the X-ray results.","medication_prescription": "The doctor has prescribed a stronger pain medication than the over-the-counter paracetamol the patient was already taking. The prescription is for acetaminophen 5mg, to be taken twice daily for the next 3 days until the follow-up appointment.","follow_up_recommendations": "A follow-up appointment has been scheduled in 3 days to review the X-ray results and reassess the patient's condition. The patient is advised to continue taking the prescribed pain medication as needed until the follow-up appointment."}
                 #doctor_report = {"reason_for_visit": "Patient has been experiencing persistent abdominal pain for the past three days.","chief_complaint_history": "The patient reports dull, constant abdominal pain that started three days ago. The pain is localized to the lower right side and is associated with mild nausea. The pain is rated as a 5 out of 10.","clinical_findings": "The doctor noted tenderness in the lower right abdomen upon examination. No signs of fever or vomiting were reported.","diagnosis_treatment_plan": "The working diagnosis is possible early appendicitis or another gastrointestinal issue. Blood work and an abdominal ultrasound have been ordered to gather more information. The patient has been advised to avoid heavy meals and monitor symptoms closely.","medication_prescription": "The doctor has prescribed an antispasmodic medication (Hyoscine 10mg) to be taken as needed for pain relief, with a maximum of 3 doses per day.","follow_up_recommendations": "The patient is instructed to return in 48 hours for follow-up, or sooner if symptoms worsen. They are also advised to proceed to the emergency room if severe pain, fever, or vomiting develops."}
                 doctor_report = generate_doctor_report(st.session_state.current_transcript, st.session_state.jwt_token)
-                patient_report = generate_patient_report(st.session_state.current_transcript, st.session_state.jwt_token)
+                atient_report = generate_patient_report(st.session_state.current_transcript, st.session_state.jwt_token)
                 if patient_report and doctor_report:
                     st.session_state.patient_report = patient_report
                     st.session_state.doctor_report = doctor_report
