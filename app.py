@@ -1,4 +1,6 @@
 import streamlit as st
+st.set_page_config(layout="wide")
+
 import boto3
 import requests
 import base64
@@ -67,8 +69,6 @@ API_URL = st.secrets["API_URL"]
 
 # Ensure ffmpeg is available
 ensure_ffmpeg()
-
-st.set_page_config(layout="wide")
 
 st.markdown("""
     <style>
