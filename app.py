@@ -15,11 +15,58 @@ from io import BytesIO
 from pydub import AudioSegment
 import tempfile
 
+# Set the path for ffmpeg
+if not os.path.exists('ffmpeg'):
+    os.makedirs('ffmpeg')
+
+# Download ffmpeg if not present (Windows specific)
+def ensure_ffmpeg():
+    ffmpeg_path = os.path.join('ffmpeg', 'ffmpeg.exe')
+    ffprobe_path = os.path.join('ffmpeg', 'ffprobe.exe')
+    
+    if not (os.path.exists(ffmpeg_path) and os.path.exists(ffprobe_path)):
+        st.info("⏳ First-time setup: Downloading ffmpeg...")
+        import urllib.request
+        import zipfile
+        
+        # Download ffmpeg
+        ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+        zip_path = os.path.join('ffmpeg', 'ffmpeg.zip')
+        
+        try:
+            urllib.request.urlretrieve(ffmpeg_url, zip_path)
+            
+            # Extract ffmpeg
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # Extract only the needed executables
+                for file in zip_ref.namelist():
+                    if file.endswith(('ffmpeg.exe', 'ffprobe.exe')):
+                        zip_ref.extract(file, 'ffmpeg')
+                        # Move files to the root ffmpeg directory
+                        extracted_path = os.path.join('ffmpeg', file)
+                        final_path = os.path.join('ffmpeg', os.path.basename(file))
+                        if os.path.exists(extracted_path):
+                            os.rename(extracted_path, final_path)
+            
+            # Clean up
+            os.remove(zip_path)
+            st.success("✅ ffmpeg setup complete!")
+        except Exception as e:
+            st.error(f"❌ Error setting up ffmpeg: {str(e)}")
+            return False
+    
+    # Set environment variable for pydub
+    os.environ['PATH'] = os.path.abspath('ffmpeg') + os.pathsep + os.environ['PATH']
+    return True
+
 # === Config (replace with your actual values) ===
 REGION = st.secrets["REGION"]
 USER_POOL_ID = st.secrets["USER_POOL_ID"]
 CLIENT_ID = st.secrets["CLIENT_ID"]
 API_URL = st.secrets["API_URL"]
+
+# Ensure ffmpeg is available
+ensure_ffmpeg()
 
 st.set_page_config(layout="wide")
 
@@ -105,7 +152,7 @@ def compress_audio(file_bytes, input_format='wav'):
         temp_in.write(file_bytes)
         temp_in.close()  # Close the file before processing
             
-        # Load audio file
+        # Load audio file using the local ffmpeg
         audio = AudioSegment.from_file(temp_in.name, format=input_format)
             
         # Convert to mono if stereo
