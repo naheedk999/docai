@@ -147,11 +147,7 @@ def poll_transcription_status(job_name, token, max_retries=20, delay=5):
         status = data.get("status")
 
         if status == "COMPLETED":
-            presigned_url = data.get("presigned_url")
-            transcript_response = requests.get(presigned_url)
-            transcript_data = transcript_response.json()
-            return transcript_data.get("results", {}).get("transcripts", [{}])[0].get("transcript", "")
-
+            return data.get("transcript", "")
         elif status == "FAILED":
             st.error(f"❌ Transcription job failed: {data.get('error', 'Unknown error')}")
             return None
@@ -889,4 +885,3 @@ else:
                 st.success("✅ Settings saved successfully!")
                 st.session_state.current_page = "home"
                 st.rerun()
-
