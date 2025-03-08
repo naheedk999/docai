@@ -16,50 +16,92 @@ from reportlab.lib import colors
 from io import BytesIO
 from pydub import AudioSegment
 import tempfile
+import platform
+import subprocess
 
 # Set the path for ffmpeg
-if not os.path.exists('ffmpeg'):
-    os.makedirs('ffmpeg')
+FFMPEG_DIR = 'ffmpeg'
+if not os.path.exists(FFMPEG_DIR):
+    os.makedirs(FFMPEG_DIR)
 
-# Download ffmpeg if not present (Windows specific)
+# Download and setup ffmpeg based on platform
 def ensure_ffmpeg():
-    ffmpeg_path = os.path.join('ffmpeg', 'ffmpeg.exe')
-    ffprobe_path = os.path.join('ffmpeg', 'ffprobe.exe')
-    
-    if not (os.path.exists(ffmpeg_path) and os.path.exists(ffprobe_path)):
-        st.info("⏳ First-time setup: Downloading ffmpeg...")
-        import urllib.request
-        import zipfile
-        
-        # Download ffmpeg
-        ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-        zip_path = os.path.join('ffmpeg', 'ffmpeg.zip')
+    """Ensure ffmpeg is available on the system"""
+    try:
+        # First try to use system ffmpeg
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except FileNotFoundError:
+        st.info("⏳ Setting up ffmpeg...")
         
         try:
-            urllib.request.urlretrieve(ffmpeg_url, zip_path)
+            # For Linux
+            if platform.system() == "Linux":
+                # Download static build of ffmpeg
+                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+                archive_path = os.path.join(FFMPEG_DIR, 'ffmpeg.tar.xz')
+                
+                # Download the archive
+                subprocess.run(['wget', ffmpeg_url, '-O', archive_path], check=True)
+                
+                # Extract the archive
+                subprocess.run(['tar', 'xf', archive_path, '-C', FFMPEG_DIR], check=True)
+                
+                # Find the extracted directory
+                extracted_dir = None
+                for item in os.listdir(FFMPEG_DIR):
+                    if item.startswith('ffmpeg-'):
+                        extracted_dir = item
+                        break
+                
+                if extracted_dir:
+                    # Move ffmpeg and ffprobe to our directory
+                    src_dir = os.path.join(FFMPEG_DIR, extracted_dir)
+                    for binary in ['ffmpeg', 'ffprobe']:
+                        src_path = os.path.join(src_dir, binary)
+                        dst_path = os.path.join(FFMPEG_DIR, binary)
+                        if os.path.exists(src_path):
+                            os.rename(src_path, dst_path)
+                            os.chmod(dst_path, 0o755)  # Make executable
+                
+                # Clean up
+                os.remove(archive_path)
+                if extracted_dir:
+                    subprocess.run(['rm', '-rf', os.path.join(FFMPEG_DIR, extracted_dir)])
+                
+            # For Windows
+            elif platform.system() == "Windows":
+                ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+                zip_path = os.path.join(FFMPEG_DIR, 'ffmpeg.zip')
+                
+                import urllib.request
+                import zipfile
+                
+                urllib.request.urlretrieve(ffmpeg_url, zip_path)
+                
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    for file in zip_ref.namelist():
+                        if file.endswith(('ffmpeg.exe', 'ffprobe.exe')):
+                            zip_ref.extract(file, FFMPEG_DIR)
+                            extracted_path = os.path.join(FFMPEG_DIR, file)
+                            final_path = os.path.join(FFMPEG_DIR, os.path.basename(file))
+                            if os.path.exists(extracted_path):
+                                os.rename(extracted_path, final_path)
+                
+                os.remove(zip_path)
             
-            # Extract ffmpeg
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                # Extract only the needed executables
-                for file in zip_ref.namelist():
-                    if file.endswith(('ffmpeg.exe', 'ffprobe.exe')):
-                        zip_ref.extract(file, 'ffmpeg')
-                        # Move files to the root ffmpeg directory
-                        extracted_path = os.path.join('ffmpeg', file)
-                        final_path = os.path.join('ffmpeg', os.path.basename(file))
-                        if os.path.exists(extracted_path):
-                            os.rename(extracted_path, final_path)
+            # Add ffmpeg directory to PATH
+            os.environ['PATH'] = os.path.abspath(FFMPEG_DIR) + os.pathsep + os.environ['PATH']
             
-            # Clean up
-            os.remove(zip_path)
+            # Verify installation
+            subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            
             st.success("✅ ffmpeg setup complete!")
+            return True
+            
         except Exception as e:
             st.error(f"❌ Error setting up ffmpeg: {str(e)}")
             return False
-    
-    # Set environment variable for pydub
-    os.environ['PATH'] = os.path.abspath('ffmpeg') + os.pathsep + os.environ['PATH']
-    return True
 
 # === Config (replace with your actual values) ===
 REGION = st.secrets["REGION"]
