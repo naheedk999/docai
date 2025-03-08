@@ -36,8 +36,6 @@ def ensure_ffmpeg():
         subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return True
     except FileNotFoundError:
-        st.info("⏳ Setting up ffmpeg...")
-        
         try:
             # For Linux
             if platform.system() == "Linux":
@@ -45,12 +43,8 @@ def ensure_ffmpeg():
                 ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
                 archive_path = os.path.join(FFMPEG_DIR, 'ffmpeg.tar.xz')
                 
-                # Download the archive
-                st.write("Downloading ffmpeg...")
+                # Download and extract silently
                 urllib.request.urlretrieve(ffmpeg_url, archive_path)
-                
-                # Extract the archive
-                st.write("Extracting ffmpeg...")
                 with tarfile.open(archive_path) as tar:
                     tar.extractall(path=FFMPEG_DIR)
                 
@@ -81,7 +75,7 @@ def ensure_ffmpeg():
                 ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
                 zip_path = os.path.join(FFMPEG_DIR, 'ffmpeg.zip')
                 
-                # Download ffmpeg
+                # Download and extract silently
                 urllib.request.urlretrieve(ffmpeg_url, zip_path)
                 
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -98,14 +92,11 @@ def ensure_ffmpeg():
             # Add ffmpeg directory to PATH
             os.environ['PATH'] = os.path.abspath(FFMPEG_DIR) + os.pathsep + os.environ['PATH']
             
-            # Verify installation
+            # Verify installation silently
             subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            
-            st.success("✅ ffmpeg setup complete!")
             return True
             
         except Exception as e:
-            st.error(f"❌ Error setting up ffmpeg: {str(e)}")
             return False
 
 # === Config (replace with your actual values) ===
