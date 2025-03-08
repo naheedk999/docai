@@ -18,6 +18,8 @@ from pydub import AudioSegment
 import tempfile
 import platform
 import subprocess
+import urllib.request
+import tarfile
 
 # Set the path for ffmpeg
 FFMPEG_DIR = 'ffmpeg'
@@ -41,11 +43,14 @@ def ensure_ffmpeg():
                 ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
                 archive_path = os.path.join(FFMPEG_DIR, 'ffmpeg.tar.xz')
                 
-                # Download the archive
-                subprocess.run(['wget', ffmpeg_url, '-O', archive_path], check=True)
+                # Download the archive using urllib
+                st.write("Downloading ffmpeg...")
+                urllib.request.urlretrieve(ffmpeg_url, archive_path)
                 
                 # Extract the archive
-                subprocess.run(['tar', 'xf', archive_path, '-C', FFMPEG_DIR], check=True)
+                st.write("Extracting ffmpeg...")
+                with tarfile.open(archive_path) as tar:
+                    tar.extractall(path=FFMPEG_DIR)
                 
                 # Find the extracted directory
                 extracted_dir = None
@@ -67,7 +72,8 @@ def ensure_ffmpeg():
                 # Clean up
                 os.remove(archive_path)
                 if extracted_dir:
-                    subprocess.run(['rm', '-rf', os.path.join(FFMPEG_DIR, extracted_dir)])
+                    import shutil
+                    shutil.rmtree(os.path.join(FFMPEG_DIR, extracted_dir))
                 
             # For Windows
             elif platform.system() == "Windows":
