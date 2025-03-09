@@ -1,6 +1,4 @@
 import streamlit as st
-st.set_page_config(layout="wide")
-
 import boto3
 import requests
 import base64
@@ -9,95 +7,11 @@ import os
 import re
 import ast
 import json
-import shutil
-import platform
-import subprocess
-import urllib.request
-import tarfile
-import zipfile
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from io import BytesIO
-from pydub import AudioSegment
-import tempfile
-
-# Set the path for ffmpeg
-FFMPEG_DIR = 'ffmpeg'
-if not os.path.exists(FFMPEG_DIR):
-    os.makedirs(FFMPEG_DIR)
-
-# Download and setup ffmpeg based on platform
-def ensure_ffmpeg():
-    """Ensure ffmpeg is available on the system"""
-    try:
-        # First try to use system ffmpeg
-        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return True
-    except FileNotFoundError:
-        try:
-            # For Linux
-            if platform.system() == "Linux":
-                # Download static build of ffmpeg
-                ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-                archive_path = os.path.join(FFMPEG_DIR, 'ffmpeg.tar.xz')
-                
-                # Download and extract silently
-                urllib.request.urlretrieve(ffmpeg_url, archive_path)
-                with tarfile.open(archive_path) as tar:
-                    tar.extractall(path=FFMPEG_DIR)
-                
-                # Find the extracted directory
-                extracted_dir = None
-                for item in os.listdir(FFMPEG_DIR):
-                    if item.startswith('ffmpeg-'):
-                        extracted_dir = item
-                        break
-                
-                if extracted_dir:
-                    # Move ffmpeg and ffprobe to our directory
-                    src_dir = os.path.join(FFMPEG_DIR, extracted_dir)
-                    for binary in ['ffmpeg', 'ffprobe']:
-                        src_path = os.path.join(src_dir, binary)
-                        dst_path = os.path.join(FFMPEG_DIR, binary)
-                        if os.path.exists(src_path):
-                            os.rename(src_path, dst_path)
-                            os.chmod(dst_path, 0o755)  # Make executable
-                
-                # Clean up
-                os.remove(archive_path)
-                if extracted_dir:
-                    shutil.rmtree(os.path.join(FFMPEG_DIR, extracted_dir))
-                
-            # For Windows
-            elif platform.system() == "Windows":
-                ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-                zip_path = os.path.join(FFMPEG_DIR, 'ffmpeg.zip')
-                
-                # Download and extract silently
-                urllib.request.urlretrieve(ffmpeg_url, zip_path)
-                
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    for file in zip_ref.namelist():
-                        if file.endswith(('ffmpeg.exe', 'ffprobe.exe')):
-                            zip_ref.extract(file, FFMPEG_DIR)
-                            extracted_path = os.path.join(FFMPEG_DIR, file)
-                            final_path = os.path.join(FFMPEG_DIR, os.path.basename(file))
-                            if os.path.exists(extracted_path):
-                                os.rename(extracted_path, final_path)
-                
-                os.remove(zip_path)
-            
-            # Add ffmpeg directory to PATH
-            os.environ['PATH'] = os.path.abspath(FFMPEG_DIR) + os.pathsep + os.environ['PATH']
-            
-            # Verify installation silently
-            subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            return True
-            
-        except Exception as e:
-            return False
 
 # === Config (replace with your actual values) ===
 REGION = st.secrets["REGION"]
@@ -105,8 +19,7 @@ USER_POOL_ID = st.secrets["USER_POOL_ID"]
 CLIENT_ID = st.secrets["CLIENT_ID"]
 API_URL = st.secrets["API_URL"]
 
-# Ensure ffmpeg is available
-ensure_ffmpeg()
+st.set_page_config(layout="wide")
 
 st.markdown("""
     <style>
@@ -180,79 +93,54 @@ def generate_pre_briefing(patient_id, token):
         return {"error": f"Unexpected error: {response.status_code} - {response.text}"}"""
     return "{'response':'Coming Soon'}"
 
-# === Helper Function: Compress Audio ===
-def compress_audio(file_bytes, input_format='wav'):
-    """Compress audio file to reduce size while maintaining quality."""
-    temp_in = None
-    try:
-        # Create a temporary file for the input
-        temp_in = tempfile.NamedTemporaryFile(suffix=f'.{input_format}', delete=False)
-        temp_in.write(file_bytes)
-        temp_in.close()  # Close the file before processing
-            
-        # Load audio file using the local ffmpeg
-        audio = AudioSegment.from_file(temp_in.name, format=input_format)
-            
-        # Convert to mono if stereo
-        if audio.channels > 1:
-            audio = audio.set_channels(1)
-            
-        # Export as MP3 with reduced quality
-        output_buffer = BytesIO()
-        audio.export(output_buffer, format='mp3', parameters=["-q:a", "8"])
-            
-        return output_buffer.getvalue()
-    except Exception as e:
-        st.error(f"Error compressing audio: {str(e)}")
-        return None
-    finally:
-        # Clean up temp file in finally block
-        if temp_in is not None:
-            try:
-                if os.path.exists(temp_in.name):
-                    os.unlink(temp_in.name)
-            except Exception as e:
-                st.warning(f"Could not delete temporary file: {str(e)}")
-
 # === Helper Function: Upload Audio to Transcription API ===
 def send_audio_to_transcription_api(file_bytes, filename, language, token):
-    """Convert audio to base64, send to transcription API."""
-    try:
-        # Compress audio before sending
-        compressed_bytes = compress_audio(file_bytes, input_format=filename.split('.')[-1].lower())
-        if compressed_bytes is None:
-            return None
-            
-        file_base64 = base64.b64encode(compressed_bytes).decode("utf-8")
-        
-        url = f"{API_URL}/start-transcription"
-        
-        payload = {
-            "filename": filename.replace(filename.split('.')[-1], 'mp3'),  # Change extension to mp3
-            "file": file_base64,
-            "language": language
-        }
+    """Upload audio to S3 and start transcription."""
+    # Step 1: Get pre-signed URL
+    url = f"{API_URL}/generate-presigned-url"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    presigned_response = requests.post(url, json={"filename": filename}, headers=headers)
+    
+    if presigned_response.status_code != 200:
+        st.error(f"❌ Failed to get upload URL: {presigned_response.status_code} - {presigned_response.text}")
+        return None
+    
+    upload_data = presigned_response.json()
+    upload_url = upload_data["upload_url"]
+    s3_key = upload_data["s3_key"]
 
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.post(url, json=payload, headers=headers)
-        
-        if response.status_code != 200:
-            st.error(f"❌ Failed to start transcription: {response.status_code} - {response.text}")
-            return None
-
-        return response.json().get("job_name")
-    except Exception as e:
-        st.error(f"Error processing audio: {str(e)}")
+    # Step 2: Upload to S3
+    upload_response = requests.put(upload_url, data=file_bytes, headers={"Content-Type": "audio/mpeg"})
+    
+    if upload_response.status_code not in [200, 204]:
+        st.error(f"❌ Failed to upload file: {upload_response.status_code} - {upload_response.text}")
         return None
 
+    # Step 3: Start transcription
+    transcription_url = f"{API_URL}/start-transcription-s3"
+    transcription_payload = {
+        "s3_key": s3_key,
+        "language": language
+    }
+    
+    transcription_response = requests.post(
+        transcription_url,
+        headers=headers,
+        json=transcription_payload
+    )
+    
+    if transcription_response.status_code != 200:
+        st.error(f"❌ Failed to start transcription: {transcription_response.status_code} - {transcription_response.text}")
+        return None
+
+    return transcription_response.json().get("job_name")
+
 # === Helper Function: Poll for Transcription Result ===
-def poll_transcription_status(job_name, token, max_retries=120, delay=5):
-    """Polls transcription status and returns the text once completed.
-    max_retries=120 and delay=5 gives us 10 minutes total timeout (120 * 5 seconds = 600 seconds = 10 minutes)"""
+def poll_transcription_status(job_name, token, max_retries=20, delay=5):
+    """Polls transcription status and returns the text once completed."""
     url = f"{API_URL}/get-transcription?job_name={job_name}"
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -266,8 +154,7 @@ def poll_transcription_status(job_name, token, max_retries=120, delay=5):
             st.error(f"❌ Job not found.")
             return None
         elif response.status_code == 202:
-            remaining_time = (max_retries - attempt) * delay
-            st.write(f"⏳ Transcription in progress... (Timeout in {remaining_time} seconds)")
+            st.write(f"⏳ Transcription still in progress...")
             time.sleep(delay)
             continue
         elif response.status_code != 200:
@@ -284,10 +171,10 @@ def poll_transcription_status(job_name, token, max_retries=120, delay=5):
             st.error(f"❌ Transcription job failed: {data.get('error', 'Unknown error')}")
             return None
 
-        st.write(f"⏳ Waiting for transcription... (Timeout in {(max_retries - attempt) * delay} seconds)")
+        st.write(f"⏳ Waiting for transcription to complete... Retrying in {delay} seconds")
         time.sleep(delay)
 
-    st.error("❌ Transcription timed out after 5 minutes.")
+    st.error("❌ Transcription timed out.")
     return None
 
 def clean_llm_response(llm_response):
@@ -478,28 +365,12 @@ def patient_visit_tab():
     with col1:
         st.markdown("#### 🎤 Record Audio")
         record_disabled = st.session_state.audio_source == "upload"
-        st.info("ℹ️ Please limit your recording to 30 minutes or less.")
         recorded_audio = st.audio_input("Record your visit notes", disabled=record_disabled)
-        
-        if recorded_audio:
-            # Check recording size (100MB = 100 * 1024 * 1024 bytes)
-            MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB in bytes
-            if len(recorded_audio.getvalue()) > MAX_FILE_SIZE:
-                st.error("❌ Recording size exceeds 100MB limit. Please make a shorter recording.")
-                recorded_audio = None
 
     with col2:
         st.markdown("#### 📁 Upload Audio")
         upload_disabled = st.session_state.audio_source == "record"
-        st.info("ℹ️ Maximum file size: 100MB (approximately 30 minutes of audio)")
         uploaded_file = st.file_uploader("Upload audio file (MP3/WAV/M4A)", type=["mp3", "wav", "m4a"], disabled=upload_disabled)
-        
-        if uploaded_file:
-            # Check file size (100MB = 100 * 1024 * 1024 bytes)
-            MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB in bytes
-            if len(uploaded_file.getvalue()) > MAX_FILE_SIZE:
-                st.error("❌ File size exceeds 100MB limit. Please upload a smaller file or reduce the audio duration.")
-                uploaded_file = None
 
     if recorded_audio and st.session_state.audio_source != "record":
         st.session_state.audio_source = "record"
