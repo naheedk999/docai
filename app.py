@@ -138,10 +138,56 @@ def send_audio_to_transcription_api(file_bytes, filename, language, token, conte
     return transcription_response.json().get("job_name")
 
 # === Helper Function: Poll for Transcription Result ===
+def send_audio_to_transcription_api(file_bytes, filename, language, token):
+    """Upload audio to S3 and start transcription."""
+    # Step 1: Get pre-signed URL
+    url = f"{API_URL}/generate-presigned-url"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    presigned_response = requests.post(url, json={"filename": filename}, headers=headers)
+    
+    if presigned_response.status_code != 200:
+        st.error(f"❌ Failed to get upload URL: {presigned_response.status_code} - {presigned_response.text}")
+        return None
+    
+    upload_data = presigned_response.json()
+    upload_url = upload_data["upload_url"]
+    s3_key = upload_data["s3_key"]
+
+    # Step 2: Upload to S3
+    upload_response = requests.put(upload_url, data=file_bytes, headers={"Content-Type": "audio/mpeg"})
+    
+    if upload_response.status_code not in [200, 204]:
+        st.error(f"❌ Failed to upload file: {upload_response.status_code} - {upload_response.text}")
+        return None
+
+    # Step 3: Start transcription
+    transcription_url = f"{API_URL}/start-transcription-s3"
+    transcription_payload = {
+        "s3_key": s3_key,
+        "language": language
+    }
+    
+    transcription_response = requests.post(
+        transcription_url,
+        headers=headers,
+        json=transcription_payload
+    )
+    
+    if transcription_response.status_code != 200:
+        st.error(f"❌ Failed to start transcription: {transcription_response.status_code} - {transcription_response.text}")
+        return None
+
+    return transcription_response.json().get("job_name")
+
+# === Helper Function: Poll for Transcription Result ===
 def poll_transcription_status(job_name, token, max_retries=20, delay=5):
     """Polls transcription status and returns the text once completed."""
     url = f"{API_URL}/get-transcription?job_name={job_name}"
     headers = {"Authorization": f"Bearer {token}"}
+
     for attempt in range(max_retries):
         response = requests.get(url, headers=headers)
 
