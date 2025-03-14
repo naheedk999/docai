@@ -93,50 +93,6 @@ def generate_pre_briefing(patient_id, token):
         return {"error": f"Unexpected error: {response.status_code} - {response.text}"}"""
     return "{'response':'Coming Soon'}"
 
-# === Helper Function: Upload Audio to Transcription API ===
-def send_audio_to_transcription_api(file_bytes, filename, language, token, content_type):
-    """Upload audio to S3 and start transcription."""
-    # Step 1: Get pre-signed URL
-    url = f"{API_URL}/generate-presigned-url"
-    headers = {
-    "Authorization": f"Bearer {token}",
-    "Content-Type": "application/json"
-    }
-    presigned_response = requests.post(url, json={"filename": filename, "contentType": content_type}, headers=headers)
-    if presigned_response.status_code != 200:
-        st.error(f"❌ Failed to get upload URL: {presigned_response.status_code} - {presigned_response.text}")
-        return None
-
-    upload_data = presigned_response.json()
-    upload_url = upload_data["upload_url"]
-    s3_key = upload_data["s3_key"]
-
-    # Step 2: Upload to S3
-    upload_response = requests.put(upload_url, data=file_bytes, headers={"Content-Type": content_type})
-
-    if upload_response.status_code not in [200, 204]:
-        st.error(f"❌ Failed to upload file: {upload_response.status_code} - {upload_response.text}")
-        return None
-
-    # Step 3: Start transcription
-    transcription_url = f"{API_URL}/start-transcription-s3"
-    transcription_payload = {
-        "s3_key": s3_key,
-        "language": language
-    }
-
-    transcription_response = requests.post(
-        transcription_url,
-        headers=headers,
-        json=transcription_payload
-    )
-
-    if transcription_response.status_code != 200:
-        st.error(f"❌ Failed to start transcription: {transcription_response.status_code} - {transcription_response.text}")
-        return None
-
-    return transcription_response.json().get("job_name")
-
 # === Helper Function: Poll for Transcription Result ===
 def send_audio_to_transcription_api(file_bytes, filename, language, token):
     """Upload audio to S3 and start transcription."""
