@@ -245,8 +245,8 @@ def generate_doctor_report(transcript, token, language="en"):
         return None
     
     
-def generate_pdf(info, report):
-    """Generate a styled patient report PDF using ReportLab."""
+def generate_pdf(info, report, language):
+    """Generate a styled patient report PDF in English or Italian using ReportLab."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
 
@@ -258,11 +258,43 @@ def generate_pdf(info, report):
 
     elements = []
 
+    # Translation for Sections
+    translations = {
+        "en": {
+            "report_title": "Medical Report",
+            "patient_name": "Patient Name:",
+            "id_number": "ID Number:",
+            "dob": "Date of Birth:",
+            "reason_for_visit": "Reason for Visit:",
+            "chief_complaint": "Chief Complaint & History of Present Illness",
+            "clinical_findings": "Clinical Examination & Diagnostic Findings",
+            "diagnosis_treatment": "Diagnosis and Treatment Plan",
+            "medications": "Medication Prescription",
+            "follow_up": "Follow-Up & Recommendations",
+            "visit_date": "Visit Date:"
+        },
+        "it": {
+            "report_title": "Referto Medico",
+            "patient_name": "Nome Paziente:",
+            "id_number": "Numero ID:",
+            "dob": "Data di Nascita:",
+            "reason_for_visit": "Motivo della Visita:",
+            "chief_complaint": "Anamnesi e Sintomatologia",
+            "clinical_findings": "Esame Clinico e Risultati Diagnostici",
+            "diagnosis_treatment": "Diagnosi e Piano di Trattamento",
+            "medications": "Prescrizione Medica",
+            "follow_up": "Follow-Up e Raccomandazioni",
+            "visit_date": "Data della Visita:"
+        }
+    }
+
+    labels = translations.get(language, translations["en"])  # Default to English if language is missing
+
     # Header (Doctor Info + Logo)
     header_table = []
 
     # Logo (if exists)
-    logo_path = info.get('logo_path')
+    logo_path = info.get("logo_path")
     if logo_path:
         logo = Image(logo_path, width=230, height=80)
     else:
@@ -270,9 +302,9 @@ def generate_pdf(info, report):
 
     doctor_info = [
         Paragraph(f"<strong>{info['doctor_name']}</strong>", body_style),
-        Paragraph(f"Specialist in {info['specialization']}", body_style),
-        Paragraph(f"Contact: {info['contact']}", body_style),
-        Paragraph(f"Email: {info['email']}", body_style)
+        Paragraph(f"{info['specialization']}", body_style),
+        Paragraph(f"📞 {info['contact']}", body_style),
+        Paragraph(f"✉️ {info['email']}", body_style)
     ]
 
     header_table.append([logo, doctor_info])
@@ -285,16 +317,16 @@ def generate_pdf(info, report):
     elements.append(Spacer(1, 20))
 
     # Title
-    elements.append(Paragraph(f"{info['type_report']} Report", title_style))
+    elements.append(Paragraph(labels["report_title"], title_style))
 
     # Patient Information Table
     patient_table = [
-        ["Patient Name:", info["patient"]["name"]],
-        ["ID Number:", info["patient"]["med_number"]],
-        ["Date of Birth:", info["patient"]["birth_date"]],
-        ["Reason for Visit:", report["reason_for_visit"]]
+        [labels["patient_name"], info["patient"]["name"]],
+        [labels["id_number"], info["patient"]["med_number"]],
+        [labels["dob"], info["patient"]["birth_date"]],
+        [labels["reason_for_visit"], report["reason_for_visit"]]
     ]
-    table = Table(patient_table, colWidths=[120, 380])
+    table = Table(patient_table, colWidths=[150, 350])
     table.setStyle(TableStyle([
         ('GRID', (0, 0), (-1, -1), 1, colors.grey),
         ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke),
@@ -312,17 +344,17 @@ def generate_pdf(info, report):
         elements.append(Paragraph(content or "N/A", body_style))
         elements.append(Spacer(1, 12))
 
-    add_section("Chief Complaint & History of Present Illness", report["chief_complaint_history"])
-    add_section("Clinical Examination & Diagnostic Findings", report["clinical_findings"])
-    add_section("Diagnosis and Treatment Plan", report["diagnosis_treatment_plan"])
-    add_section("Medication Prescription", report["medication_prescription"])
-    add_section("Follow-Up & Recommendations", report["follow_up_recommendations"])
+    add_section(labels["chief_complaint"], report["chief_complaint_history"])
+    add_section(labels["clinical_findings"], report["clinical_findings"])
+    add_section(labels["diagnosis_treatment"], report["diagnosis_treatment_plan"])
+    add_section(labels["medications"], report["medication_prescription"])
+    add_section(labels["follow_up"], report["follow_up_recommendations"])
 
     # Footer
     elements.append(Spacer(1, 50))
 
     footer_table = [
-        [f"Visit Date: {info['visit_date']}", f"{info['doctor_name']} - {info['specialization']}"]
+        [f"{labels['visit_date']} {info['visit_date']}", f"{info['doctor_name']} - {info['specialization']}"]
     ]
     table = Table(footer_table, colWidths=[250, 250])
     table.setStyle(TableStyle([
@@ -336,7 +368,7 @@ def generate_pdf(info, report):
     doc.build(elements)
     buffer.seek(0)
     return buffer
-
+    
 # === Patient Visit Tab (Enhanced) ===
 def patient_visit_tab():
     # Add custom CSS for better styling
@@ -525,7 +557,7 @@ def patient_visit_tab():
                         "med_number": patient_id
                     }
                 }
-                pdf_buffer = generate_pdf(info, st.session_state.patient_report)
+                pdf_buffer = generate_pdf(info, st.session_state.patient_report,language)
                 st.download_button(
                     label="Download PDF",
                     data=pdf_buffer,
@@ -607,7 +639,7 @@ def patient_visit_tab():
                         "med_number": patient_id
                     }
                 }
-                pdf_buffer = generate_pdf(info, st.session_state.doctor_report)
+                pdf_buffer = generate_pdf(info, st.session_state.doctor_report,language)
                 st.download_button(
                     label="Download PDF",
                     data=pdf_buffer,
