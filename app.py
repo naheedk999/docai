@@ -138,7 +138,7 @@ def send_audio_to_transcription_api(file_bytes, filename, language, token, conte
     return transcription_response.json().get("job_name")
 
 # === Helper Function: Poll for Transcription Result ===
-def poll_transcription_status(job_name, token, max_retries=50, delay=5):
+def poll_transcription_status(job_name, token, max_retries=20, delay=5):
     """Polls transcription status and returns the text once completed."""
     url = f"{API_URL}/get-transcription?job_name={job_name}"
     headers = {"Authorization": f"Bearer {token}"}
@@ -192,14 +192,18 @@ def clean_llm_response(llm_response):
         raise ValueError(f"Failed to parse LLM response: {e}")
 
 # === Helper Function: Generate Patient Report ===
-def generate_patient_report(transcript, token):
+def generate_patient_report(transcript, token, language="en"):
     """Send transcript to get patient report summary."""
     url = f"{API_URL}/summary-patient"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    response = requests.post(url, json={"text": transcript}, headers=headers)
+    payload = {
+        "text": transcript,
+        "language": language
+    }
+    response = requests.post(url, json=payload, headers=headers)
     
     if response.status_code != 200:
         st.error(f"❌ Failed to generate report: {response.status_code} - {response.text}")
@@ -214,14 +218,18 @@ def generate_patient_report(transcript, token):
         st.error(f"❌ Failed to process report response: {e}")
         return None
     
-def generate_doctor_report(transcript, token):
+def generate_doctor_report(transcript, token, language="en"):
     """Send transcript to get doctor report summary."""
     url = f"{API_URL}/summary-doctor"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    response = requests.post(url, json={"text": transcript}, headers=headers)
+    payload = {
+        "text": transcript,
+        "language": language
+    }
+    response = requests.post(url, json=payload, headers=headers)
     
     if response.status_code != 200:
         st.error(f"❌ Failed to generate report: {response.status_code} - {response.text}")
@@ -427,10 +435,8 @@ def patient_visit_tab():
         
         if st.button("📊 Generate Reports", type="primary"):
             with st.spinner("⏳ Generating reports..."):
-                #patient_report = {"reason_for_visit": "Patient fell in the shower yesterday and is experiencing pain in the hand.","chief_complaint_history": "The patient reports falling in the shower yesterday, initially feeling fine but now experiencing increasing pain in the hand. The pain worsens with movement and is rated as a 6 out of 10 on the pain scale.","clinical_findings": "The doctor suspects a sprain or possibly a hairline fracture based on the patient's description. An X-ray has been recommended to confirm the diagnosis.","diagnosis_treatment_plan": "The initial assessment suggests a possible sprain or hairline fracture. An X-ray has been ordered to determine the exact nature of the injury. The treatment plan includes pain management and a follow-up appointment to review the X-ray results.","medication_prescription": "The doctor has prescribed a stronger pain medication than the over-the-counter paracetamol the patient was already taking. The prescription is for acetaminophen 5mg, to be taken twice daily for the next 3 days until the follow-up appointment.","follow_up_recommendations": "A follow-up appointment has been scheduled in 3 days to review the X-ray results and reassess the patient's condition. The patient is advised to continue taking the prescribed pain medication as needed until the follow-up appointment."}
-                #doctor_report = {"reason_for_visit": "Patient has been experiencing persistent abdominal pain for the past three days.","chief_complaint_history": "The patient reports dull, constant abdominal pain that started three days ago. The pain is localized to the lower right side and is associated with mild nausea. The pain is rated as a 5 out of 10.","clinical_findings": "The doctor noted tenderness in the lower right abdomen upon examination. No signs of fever or vomiting were reported.","diagnosis_treatment_plan": "The working diagnosis is possible early appendicitis or another gastrointestinal issue. Blood work and an abdominal ultrasound have been ordered to gather more information. The patient has been advised to avoid heavy meals and monitor symptoms closely.","medication_prescription": "The doctor has prescribed an antispasmodic medication (Hyoscine 10mg) to be taken as needed for pain relief, with a maximum of 3 doses per day.","follow_up_recommendations": "The patient is instructed to return in 48 hours for follow-up, or sooner if symptoms worsen. They are also advised to proceed to the emergency room if severe pain, fever, or vomiting develops."}
-                doctor_report = generate_doctor_report(st.session_state.current_transcript, st.session_state.jwt_token)
-                patient_report = generate_patient_report(st.session_state.current_transcript, st.session_state.jwt_token)
+                doctor_report = generate_doctor_report(st.session_state.current_transcript, st.session_state.jwt_token, language)
+                patient_report = generate_patient_report(st.session_state.current_transcript, st.session_state.jwt_token, language)
                 if patient_report and doctor_report:
                     st.session_state.patient_report = patient_report
                     st.session_state.doctor_report = doctor_report
