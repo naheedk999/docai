@@ -302,9 +302,9 @@ def generate_pdf(info, report, language):
 
     doctor_info = [
         Paragraph(f"<strong>{info['doctor_name']}</strong>", body_style),
-        Paragraph(f"{info['specialization']}", body_style),
-        Paragraph(f"📞 {info['contact']}", body_style),
-        Paragraph(f"✉️ {info['email']}", body_style)
+        Paragraph(f"Specialist in {info['specialization']}", body_style),
+        Paragraph(f"Contact: {info['contact']}", body_style),
+        Paragraph(f"Email: {info['email']}", body_style)
     ]
 
     header_table.append([logo, doctor_info])
