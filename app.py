@@ -138,7 +138,7 @@ def send_audio_to_transcription_api(file_bytes, filename, language, token, conte
     return transcription_response.json().get("job_name")
 
 # === Helper Function: Poll for Transcription Result ===
-def poll_transcription_status(job_name, token, max_retries=20, delay=5):
+def poll_transcription_status(job_name, token, max_retries=150, delay=5):
     """Polls transcription status and returns the text once completed."""
     url = f"{API_URL}/get-transcription?job_name={job_name}"
     headers = {"Authorization": f"Bearer {token}"}
